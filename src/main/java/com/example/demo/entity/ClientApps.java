@@ -29,8 +29,8 @@ public class ClientApps {
 	private Date createdAt;
 	private Date updatedAt;
 
-	@ManyToOne
-	@JoinColumn(name = "organization_id")
-	private Organization organization;
+//	@ManyToOne
+//	@JoinColumn(name = "organization_id")
+//	private Organization organization;
 
 }

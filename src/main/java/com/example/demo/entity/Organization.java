@@ -1,10 +1,14 @@
 package com.example.demo.entity;
 
+import java.util.ArrayList;
 import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -38,12 +42,12 @@ public class Organization {
 	private String photoURL;
 
 	private String adminUser;
-	
-	@ManyToMany
-	@JoinTable(name = "organization_user_map", joinColumns = @JoinColumn(name = "org_id"), inverseJoinColumns = @JoinColumn(name = "user_id"))
-	private List<User> users;
 
-	@OneToMany(mappedBy = "organization", cascade = CascadeType.ALL)
-	private List<ClientApps> apps;
+//	@ManyToMany(mappedBy = "organizations", fetch = FetchType.LAZY)
+//	@JsonIgnore
+//	private List<User> users = new ArrayList();
+//
+//	@OneToMany(mappedBy = "organizations", fetch = FetchType.LAZY)
+//	private List<ClientApps> apps = new ArrayList();
 
 }

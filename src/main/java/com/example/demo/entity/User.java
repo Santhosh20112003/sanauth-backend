@@ -3,6 +3,7 @@
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.hibernate.annotations.GenericGenerator;
@@ -46,22 +47,5 @@ public class User {
     private boolean isActive;
     
     private boolean isEmailVerified;
-    
-//    @Column(nullable = true)
-//    private Integer otp;
-//    
-//    @Column(name = "forgot_password_otp",nullable = true)
-//    private Integer forgot_password_otp;
-    
-    @ManyToMany
-    @JoinTable(
-        name = "user_organization",
-        joinColumns = @JoinColumn(name = "userid"),
-        inverseJoinColumns = @JoinColumn(name = "org_id")
-    )
-    private List<Organization> organizations;
-
-    
-    
-    
+        
 }

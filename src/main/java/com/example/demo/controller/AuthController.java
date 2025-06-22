@@ -41,6 +41,7 @@ import com.example.demo.repository.UserRepository;
 import com.example.demo.service.UsersService;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 
 @CrossOrigin(origins = "*", maxAge = 3600)
@@ -89,6 +90,7 @@ public class AuthController {
 	@PostMapping("/admin/create")
 	public ResponseEntity<User> createUser(@RequestBody User user) {
 		log.info("creation /api/auth/create route started");
+		user.setActive(true);
 		user.setPassword(passwordEncoder.encode(user.getPassword()));
 		return usersService.createUser(user);
 	}
@@ -100,8 +102,10 @@ public class AuthController {
 	}
 
 	@PostMapping("/login")
-	public ResponseEntity<Map<String, String>> login(@RequestBody UserNameAndPasswordWithMetaData user) {
+	public ResponseEntity<Map<String, String>> login(HttpServletRequest request,@RequestBody UserNameAndPasswordWithMetaData user) {
 		UserLoginHistory metadata = new UserLoginHistory();
+		System.out.println("IP ADDRESS: "+request.getRemoteAddr());
+		
 		metadata.setDeviceInfo(user.getMetadata().getDeviceInfo());
 		metadata.setIpAddress(user.getMetadata().getIpAddress());
 		metadata.setLocation(user.getMetadata().getLocation());
@@ -387,6 +391,5 @@ public class AuthController {
 
 	    return ResponseEntity.ok(userDetails);
 	}
-
 
 }

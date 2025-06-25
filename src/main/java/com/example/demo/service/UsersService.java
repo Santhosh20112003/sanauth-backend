@@ -9,11 +9,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.entity.User;
-import com.example.demo.entity.UserLoginHistory;
 import com.example.demo.entity.UserOtp;
 import com.example.demo.modal.RefinedLoginHistories;
 import com.example.demo.modal.RefinedUserModal;
@@ -36,18 +34,14 @@ public class UsersService {
 	private LoggingRepository loggingRepository;
 
 	public ResponseEntity<User> createUser(User user) {
-		return new ResponseEntity(userRepository.save(user), HttpStatus.CREATED);
+		return new ResponseEntity<User>(userRepository.save(user), HttpStatus.CREATED);
 	}
 
 	public ResponseEntity<List<RefinedUserModal>> getAllUser() {
 		List<User> users = userRepository.findAll();
-		List<RefinedUserModal> refinedUsers = users.stream().map(user -> new RefinedUserModal(user)) // assumes a
-																										// constructor
-																										// exists
-				.toList();
-
+		List<RefinedUserModal> refinedUsers = users.stream()
+				.map(user -> new RefinedUserModal(user)).toList();
 		return new ResponseEntity<>(refinedUsers, HttpStatus.OK);
-
 	}
 
 	public boolean sendVerificationEmail(String email, String type) {

@@ -2,6 +2,7 @@ package com.example.demo.modal;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import lombok.AllArgsConstructor;
@@ -18,8 +19,8 @@ public class UserFullDetailsModal {
     private String name;
     private String photoURL;
     private String role;
-    private Instant createdAt;
-    private Instant lastLogin;
+    private LocalDateTime createdAt;
+    private LocalDateTime lastLogin;
     private boolean isActive;
     private boolean isEmailVerified;
 	private LocalDate dob;

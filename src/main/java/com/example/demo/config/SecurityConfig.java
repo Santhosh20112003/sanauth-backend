@@ -51,7 +51,7 @@ public class SecurityConfig {
         System.out.println("JWT Filter Chain Started");
 
         http
-            .securityMatcher("/api/users/**","/api/auth/me")
+            .securityMatcher("/api/users/**","/api/auth/me","/api/org/**")
             .authorizeHttpRequests(req -> req.anyRequest().authenticated())
             .cors(Customizer.withDefaults())
             .addFilterBefore( jwtFilter, UsernamePasswordAuthenticationFilter.class)
@@ -66,7 +66,6 @@ public class SecurityConfig {
     public SecurityFilterChain permitLoginFilterChain(HttpSecurity http) throws Exception {
         System.out.println("Permit-All Filter Chain Started");
         http
-//            .securityMatcher("/api/auth/login")
             .authorizeHttpRequests(req -> req.anyRequest().permitAll())
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable());

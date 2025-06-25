@@ -1,6 +1,7 @@
 package com.example.demo.modal;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 import com.example.demo.entity.User;
 
@@ -17,8 +18,8 @@ public class RefinedUserModal {
     private String name;
     private String photoURL;
     private String role;
-    private Instant createdAt;
-    private Instant lastLogin;
+    private LocalDateTime createdAt;
+    private LocalDateTime lastLogin;
     private boolean isActive;
     
     public RefinedUserModal(User user) {

@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.example.demo.entity.Organization;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserOptionalData;
 import com.example.demo.modal.NewAndOldPassword;
@@ -108,11 +107,6 @@ public class UserController {
 		return ResponseEntity.ok("User updated successfully");
 	}
 
-	@PostMapping("/create/org")
-	public ResponseEntity<String> sendMail(@RequestBody Organization org) {
-		log.info("Sample endpoint hit with organization: {}", org.getName());
-		return new ResponseEntity<>("Sample endpoint hit", HttpStatus.OK);
-	}
 
 	@PostMapping("/change/password")
 	public ResponseEntity<String> changePassword(@RequestBody NewAndOldPassword data, Authentication authentication) {

@@ -31,7 +31,7 @@ public class UserLoginHistory {
     private String email; 
 
     @Column(name = "login_time", nullable = false)
-    private Instant loginTime;
+    private LocalDateTime loginTime;
 
     @Column(name = "device_info", length = 255)
     private String deviceInfo;

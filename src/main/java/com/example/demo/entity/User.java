@@ -3,6 +3,7 @@
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,9 +41,9 @@ public class User {
     @Column(nullable = false)
     private String role;
 
-    private Instant createdAt;
+    private LocalDateTime createdAt;
 
-    private Instant lastLogin;
+    private LocalDateTime lastLogin;
   
     private boolean isActive;
     

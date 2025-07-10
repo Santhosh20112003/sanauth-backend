@@ -34,10 +34,12 @@ import com.example.demo.modal.RefinedUserModal;
 import com.example.demo.modal.UserFullDetailsModal;
 import com.example.demo.modal.UserNameAndPasswordWithMetaData;
 import com.example.demo.modal.UserNamePassword;
+import com.example.demo.modal.WebSocketPayload;
 import com.example.demo.repository.LoggingRepository;
 import com.example.demo.repository.OtpRepository;
 import com.example.demo.repository.UserOptionalDataRepository;
 import com.example.demo.repository.UserRepository;
+import com.example.demo.service.NotificationService;
 import com.example.demo.service.UsersService;
 import com.example.demo.util.CommonUtils;
 
@@ -74,6 +76,9 @@ public class AuthController {
 
 	@Autowired
 	private UserOptionalDataRepository userOptionalDataRepository;
+
+	@Autowired
+    private NotificationService notificationService;
 
 	@PostConstruct
 	public void init() {
@@ -460,7 +465,7 @@ public class AuthController {
 			userDetails.setWebsiteUrl(userData.getWebsiteUrl());
 			userDetails.setJobTitle(userData.getJobTitle());
 		});
-
+//		notificationService.sendToClients(new WebSocketPayload(email,"","","User details fetched for: " + email),email);
 		return ResponseEntity.ok(userDetails);
 	}
 

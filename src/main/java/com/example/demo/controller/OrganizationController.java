@@ -3,6 +3,7 @@ package com.example.demo.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,7 @@ import com.example.demo.service.OrganizationService;
 
 import lombok.extern.slf4j.Slf4j;
 
+@CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
 @RequestMapping("/api/org")
 @Slf4j
@@ -57,7 +59,7 @@ public class OrganizationController {
 	public ResponseEntity<Object> updateMemberInOrg(@RequestBody AddMembersModal memberEmail, Authentication authentication) {
 		log.info("Updating member: {} in organization", memberEmail);
 		return organizationService.updateMemberRoleInOrg(memberEmail, authentication);
-	}
+	} 
 	
 	@DeleteMapping("/remove/member")
 	public ResponseEntity<Object> removeMemberFromOrg(@RequestBody AddMembersModal memberEmail, Authentication authentication) {

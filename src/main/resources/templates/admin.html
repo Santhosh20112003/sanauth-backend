@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Notifications</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #notifications p {
+            background: #f1f1f1;
+            padding: 8px;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Real-Time Notifications</h1>
+
+<div id="notifications"></div>
+
+<input type="text" id="message" placeholder="Enter your message">
+<button onclick="sendMessage()">Send</button>
+
+<script>
+    let stompClient = null;
+
+    function connect() {
+        const socket = new SockJS('http://localhost:9090/ws');  // WebSocket endpoint
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function (frame) {
+            console.log('✅ Connected: ' + frame);
+
+            // Subscribe to the topic where messages are broadcast
+            stompClient.subscribe('/topic/shanmugamsanthosh22@gmail.com', function (message) {
+                showNotification(message.body);
+            });
+        }, function (error) {
+            console.error('❌ WebSocket connection error: ' + error);
+        });
+    }
+
+    function sendMessage() {
+        const message = document.getElementById('message').value;
+        if (stompClient && stompClient.connected) {
+            // Send message to backend (mapped to @MessageMapping("/sendMessage"))
+            stompClient.send('/app/send', {}, message);
+            console.log('📤 Message sent:', message);
+            document.getElementById('message').value = '';
+        } else {
+            console.error('❌ WebSocket connection is not established.');
+        }
+    }
+
+    function showNotification(message) {
+        const notifications = document.getElementById('notifications');
+        const notification = document.createElement('p');
+        notification.textContent = message;
+        notifications.appendChild(notification);
+    }
+
+    // Initiate connection on page load
+    connect();
+</script>
+
+</body>
+</html>

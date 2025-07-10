@@ -11,4 +11,19 @@ public class HomeController {
         return "home"; 
     }
     
+    @GetMapping("/client1")
+    public String client1() {
+        return "client1"; 
+    }
+    
+    @GetMapping("/client2")
+    public String client2() {
+        return "client2"; 
+    }
+    
+    @GetMapping("/admin")
+    public String admin() {
+        return "admin"; 
+    }
+    
 }

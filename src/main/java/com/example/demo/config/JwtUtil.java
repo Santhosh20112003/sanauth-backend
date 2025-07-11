@@ -5,12 +5,10 @@ import java.util.LinkedHashMap;
 
 import javax.crypto.SecretKey;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import com.example.demo.modal.Payload;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -19,7 +17,6 @@ import io.jsonwebtoken.security.Keys;
 @Component
 public class JwtUtil {
 	
-	@Autowired
 	private FernetUtil fernetUtil;
 
     private static final String SECRET_KEY_STRING = "e970d4a6ae7042fc886ee6744e01070de500e3242205006e080bc537a237119b";
@@ -36,7 +33,7 @@ public class JwtUtil {
                 .compact();
         
         try {
-			return fernetUtil.encrypt(token);
+			return FernetUtil.encrypt(token);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

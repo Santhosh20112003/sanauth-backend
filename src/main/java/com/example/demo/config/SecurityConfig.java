@@ -2,6 +2,8 @@ package com.example.demo.config;
 
 import com.example.demo.service.CustomUserDetailsService;
 
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,78 +25,70 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@Slf4j
 public class SecurityConfig {
 
 	@Autowired
-	private JwtFilter jwtFilter;	
+	private JwtFilter jwtFilter;
 
-    @Bean
-    @Order(1)
-    public SecurityFilterChain basicAuthFilterChain(HttpSecurity http) throws Exception {
-        System.out.println("Basic Auth Filter Chain Started");
+	@Bean
+	@Order(1)
+	public SecurityFilterChain basicAuthFilterChain(HttpSecurity http) throws Exception {
+		log.info("Basic Auth Filter Chain Started");
 
-        http
-            .securityMatcher("/api/auth/admin/**")
-            .authorizeHttpRequests(req -> req.anyRequest().authenticated())
-            .cors(Customizer.withDefaults())
-            .httpBasic(Customizer.withDefaults())
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+		http.securityMatcher("/api/auth/admin/**").authorizeHttpRequests(req -> req.anyRequest().authenticated())
+				.cors(Customizer.withDefaults()).httpBasic(Customizer.withDefaults()).csrf(csrf -> csrf.disable())
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
-        
-        return http.build();
-    }
+		return http.build();
+	}
 
-    @Bean
-    @Order(2)
-    public SecurityFilterChain jwtFilterChain(HttpSecurity http) throws Exception {
-        System.out.println("JWT Filter Chain Started");
+	@Bean
+	@Order(2)
+	public SecurityFilterChain jwtFilterChain(HttpSecurity http) throws Exception {
+		log.info("JWT Filter Chain Started");
 
-        http
-            .securityMatcher("/api/users/**","/api/auth/me","/api/org/**")
-            .authorizeHttpRequests(req -> req.anyRequest().authenticated())
-            .cors(Customizer.withDefaults())
-            .addFilterBefore( jwtFilter, UsernamePasswordAuthenticationFilter.class)
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+		http.securityMatcher("/api/users/**", "/api/auth/me", "/api/org/**")
+				.authorizeHttpRequests(req -> req.anyRequest().authenticated()).cors(Customizer.withDefaults())
+				.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).csrf(csrf -> csrf.disable())
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
-        return http.build();
-    }
+		return http.build();
+	}
 
-    @Bean
-    @Order(3)
-    public SecurityFilterChain permitLoginFilterChain(HttpSecurity http) throws Exception {
-        System.out.println("Permit-All Filter Chain Started");
-        http
-            .authorizeHttpRequests(req -> req.anyRequest().permitAll())
-            .cors(Customizer.withDefaults())
-            .csrf(csrf -> csrf.disable());
+	@Bean
+	@Order(3)
+	public SecurityFilterChain permitLoginFilterChain(HttpSecurity http) throws Exception {
 
-        return http.build();
-    }
+		log.info("Permit Login Filter Chain Started");
+		http.authorizeHttpRequests(req -> req.anyRequest().permitAll()).cors(Customizer.withDefaults())
+				.csrf(csrf -> csrf.disable());
 
-    @Bean
-    public UserDetailsService userDetailsService() {
-        System.out.println("UserDetailsService Initialized");
-        return new CustomUserDetailsService();
-    }
+		return http.build();
+	}
 
-    @Bean
-    public DaoAuthenticationProvider authenticationProvider() {
-        System.out.println("Authentication Provider Initialized");
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService());
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
-    }
-   
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
-    }
+	@Bean
+	public UserDetailsService userDetailsService() {
+		log.info("User Details Service Initialized");
+		return new CustomUserDetailsService();
+	}
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+	@Bean
+	public DaoAuthenticationProvider authenticationProvider() {
+		log.info("Authentication Provider Initialized");
+		DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+		authProvider.setUserDetailsService(userDetailsService());
+		authProvider.setPasswordEncoder(passwordEncoder());
+		return authProvider;
+	}
+
+	@Bean
+	public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+		return config.getAuthenticationManager();
+	}
+
+	@Bean
+	public PasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
 }

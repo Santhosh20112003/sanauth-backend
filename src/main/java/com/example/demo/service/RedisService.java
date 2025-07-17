@@ -104,4 +104,16 @@ public class RedisService {
 		}
 	}
 
+	public void deleteByPattern(String usedOtpKeyPattern) {
+		try {
+			Set<String> keys = redisTemplate.keys(usedOtpKeyPattern);
+			if (keys != null && !keys.isEmpty()) {
+				redisTemplate.delete(keys);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+	}
+
 }

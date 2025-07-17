@@ -81,10 +81,44 @@ public class TOTPService {
         }
         return isValid;
     }
+    
+    public boolean verifyCodeSetup(String username, String code) {
+        if (code == null || code.length() != 6 || !code.matches("\\d+")) {
+            return false; // Basic format check
+        }
+
+        String secret = (String) redisService.get(SECRET_KEY_PREFIX + username);
+        if (secret == null) {
+            return false; // User not registered
+        }
+
+        String usedOtpKey = USED_OTP_KEY_PREFIX + code;
+        Object lastUsed = redisService.get(usedOtpKey);
+        if (lastUsed != null && lastUsed.toString().equals(code)) {
+            return false; // OTP reuse
+        }
+
+        boolean isValid = TOTPUtil.verifyTOTP(secret, code);
+    
+        return isValid;
+    }
 
     private String generateBase32Secret() {
         byte[] buffer = new byte[10];
         new SecureRandom().nextBytes(buffer);
         return new Base32().encodeToString(buffer).replace("=", "");
     }
+
+	public void removeSecret(String email) {
+		 
+	    String redisKey = SECRET_KEY_PREFIX + email;
+		redisService.delete(redisKey);
+		
+		// Optionally, remove all used OTPs for this user
+		String usedOtpKeyPattern = USED_OTP_KEY_PREFIX + "*";
+		redisService.deleteByPattern(usedOtpKeyPattern);
+		
+		// Log the removal
+		System.out.println("TOTP secret and used OTPs removed for user: " + email);
+	}
 }

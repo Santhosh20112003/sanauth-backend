@@ -26,6 +26,7 @@ import com.example.demo.modal.UpdateUserDetailsModal;
 import com.example.demo.repository.UserOptionalDataRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.repository.UserSettingsRepository;
+import com.example.demo.service.RedisService;
 import com.example.demo.service.TOTPService;
 import com.example.demo.service.UsersService;
 
@@ -45,15 +46,18 @@ public class UserController {
 
 	@Autowired
 	private UserOptionalDataRepository userOptionalDataRepository;
-	
+
 	@Autowired
 	private PasswordEncoder passwordEncoder;
-	
+
 	@Autowired
 	private TOTPService totpService;
-	
+
 	@Autowired
 	private UserSettingsRepository userSettingsRepository;
+	
+	@Autowired
+	private RedisService redisService;
 
 	@GetMapping("/get/all")
 	public ResponseEntity<List<RefinedUserModal>> getAllUser() {
@@ -117,42 +121,42 @@ public class UserController {
 		return ResponseEntity.ok("User updated successfully");
 	}
 
-
 	@PostMapping("/change/password")
 	public ResponseEntity<String> changePassword(@RequestBody NewAndOldPassword data, Authentication authentication) {
-	    log.info("Attempting to change password for user: {}", authentication.getName());
+		log.info("Attempting to change password for user: {}", authentication.getName());
 
-	    String email = authentication.getName();
-	    if (email == null || email.isBlank()) {
-	        return new ResponseEntity<>("Email is required", HttpStatus.BAD_REQUEST);
-	    }
-	    
-	    if(data.getOld_password() == null || data.getNew_password() == null || data.getOld_password().isBlank() || data.getNew_password().isBlank()) {
-	        return new ResponseEntity<>("Old and new passwords are required", HttpStatus.BAD_REQUEST);
-	    }
+		String email = authentication.getName();
+		if (email == null || email.isBlank()) {
+			return new ResponseEntity<>("Email is required", HttpStatus.BAD_REQUEST);
+		}
 
-	    Optional<User> optionalUser = userRepository.findByEmail(email);
-	    if (optionalUser.isEmpty()) {
-	        return new ResponseEntity<>("User not found", HttpStatus.NOT_FOUND);
-	    }
+		if (data.getOld_password() == null || data.getNew_password() == null || data.getOld_password().isBlank()
+				|| data.getNew_password().isBlank()) {
+			return new ResponseEntity<>("Old and new passwords are required", HttpStatus.BAD_REQUEST);
+		}
 
-	    User user = optionalUser.get();
+		Optional<User> optionalUser = userRepository.findByEmail(email);
+		if (optionalUser.isEmpty()) {
+			return new ResponseEntity<>("User not found", HttpStatus.NOT_FOUND);
+		}
 
-	    // Check if old password matches
-	    if (!passwordEncoder.matches(data.getOld_password(), user.getPassword())) {
-	        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Old password is incorrect");
-	    }
+		User user = optionalUser.get();
 
-	    // Encode and update new password
-	    String encodedNewPassword = passwordEncoder.encode(data.getNew_password());
-	    user.setPassword(encodedNewPassword);
+		// Check if old password matches
+		if (!passwordEncoder.matches(data.getOld_password(), user.getPassword())) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Old password is incorrect");
+		}
 
-	    userRepository.save(user);
+		// Encode and update new password
+		String encodedNewPassword = passwordEncoder.encode(data.getNew_password());
+		user.setPassword(encodedNewPassword);
 
-	    log.info("Password changed successfully for user: {}", email);
-	    return ResponseEntity.ok("Password changed successfully");
+		userRepository.save(user);
+
+		log.info("Password changed successfully for user: {}", email);
+		return ResponseEntity.ok("Password changed successfully");
 	}
-	
+
 	@PostMapping("/register-mfa")
 	public ResponseEntity<Object> registerMfa(Authentication authentication) {
 		String email = authentication.getName();
@@ -162,31 +166,109 @@ public class UserController {
 		if (email == null || email.isBlank()) {
 			return ResponseEntity.badRequest().body(Map.of("error", "Email must not be null or empty"));
 		}
-		
+
 		Optional<UserSettings> userSettingsOpt = userSettingsRepository.findByEmail(email);
-		
+
 		if (userSettingsOpt.isEmpty()) {
 			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User settings not found"));
 		}
-		
+
 		UserSettings userSettings = userSettingsOpt.get();
-		
+
 		if (userSettings.isMfaEnabled()) {
 			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "MFA is already enabled"));
 		}
-		
+
 		Map<String, String> registrationData = totpService.register(email);
-		
+
 		if (registrationData == null || registrationData.isEmpty()) {
-			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to register MFA"));
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(Map.of("error", "Failed to register MFA"));
 		}
-		
+
 		userSettings.setMfaEnabled(true);
-		
+
 		userSettingsRepository.save(userSettings);
-		
+
 		log.info("MFA registration successful for user: {}", email);
 		return ResponseEntity.ok(registrationData);
 	}
+
+	@PostMapping("/verify-mfa-setup")
+	public ResponseEntity<Object> verifyMfaSetup(@RequestBody Map<String, String> requestBody,
+			Authentication authentication) {
+		String email = authentication.getName();
+		String code = requestBody.get("code");
+
+		log.info("MFA verification attempt for user: {}", email);
+
+		if (email == null || email.isBlank()) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Email must not be null or empty"));
+		}
+
+		if (code == null || code.isBlank()) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Code must not be null or empty"));
+		}
+
+		boolean isValid = totpService.verifyCodeSetup(email, code);
+
+		if (!isValid) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid MFA code"));
+		}
+
+		log.info("MFA verification successful for user: {}", email);
+		return ResponseEntity.ok(Map.of("message", "MFA setup verified successfully"));
+	}
+
+	@GetMapping("/get/settings")
+	public ResponseEntity<UserSettings> getUserSettings(Authentication authentication) {
+		String email = authentication.getName();
+
+		log.info("Fetching user settings for: {}", email);
+
+		if (email == null || email.isBlank()) {
+			return ResponseEntity.badRequest().build();
+		}
+
+		Optional<UserSettings> userSettingsOpt = userSettingsRepository.findByEmail(email);
+
+		if (userSettingsOpt.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+		}
+
+		UserSettings userSettings = userSettingsOpt.get();
+		return ResponseEntity.ok(userSettings);
+	}
 	
+	@GetMapping("/remove/mfa")
+	public ResponseEntity<String> removeMfa(Authentication authentication) {
+		String email = authentication.getName();
+
+		log.info("Attempting to remove MFA for user: {}", email);
+
+		if (email == null || email.isBlank()) {
+			return ResponseEntity.badRequest().body("Email must not be null or empty");
+		}
+
+		Optional<UserSettings> userSettingsOpt = userSettingsRepository.findByEmail(email);
+
+		if (userSettingsOpt.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User settings not found");
+		}
+
+		UserSettings userSettings = userSettingsOpt.get();
+
+		if (!userSettings.isMfaEnabled()) {
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("MFA is not enabled for this user");
+		}
+
+		userSettings.setMfaEnabled(false);
+		userSettingsRepository.save(userSettings);
+		
+		totpService.removeSecret(email);
+		
+		log.info("MFA removed successfully for user: {}", email);
+		return ResponseEntity.ok("MFA removed successfully");
+	}
+
 }

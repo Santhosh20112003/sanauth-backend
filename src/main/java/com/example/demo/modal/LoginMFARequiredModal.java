@@ -7,9 +7,7 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserNameAndPasswordWithMetaData {
-	private String email;
-	private String password;
-	private String otp;
-	private LoginHistoryRequest metadata;
+public class LoginMFARequiredModal {
+	String message;
+	boolean isMfaEnabled;
 }

@@ -16,6 +16,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,8 +28,11 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.UserLoginHistory;
 import com.example.demo.entity.UserOptionalData;
 import com.example.demo.entity.UserOtp;
+import com.example.demo.entity.UserSettings;
 import com.example.demo.modal.EmailAndOtp;
 import com.example.demo.modal.EmailOtpAndPassword;
+import com.example.demo.modal.LoginMFARequiredModal;
+import com.example.demo.modal.MagicLinkPayload;
 import com.example.demo.modal.MailModal;
 import com.example.demo.modal.RefinedUserModal;
 import com.example.demo.modal.UserFullDetailsModal;
@@ -39,7 +43,9 @@ import com.example.demo.repository.LoggingRepository;
 import com.example.demo.repository.OtpRepository;
 import com.example.demo.repository.UserOptionalDataRepository;
 import com.example.demo.repository.UserRepository;
+import com.example.demo.repository.UserSettingsRepository;
 import com.example.demo.service.NotificationService;
+import com.example.demo.service.TOTPService;
 import com.example.demo.service.UsersService;
 import com.example.demo.util.CommonUtils;
 
@@ -78,7 +84,13 @@ public class AuthController {
 	private UserOptionalDataRepository userOptionalDataRepository;
 
 	@Autowired
-    private NotificationService notificationService;
+	private NotificationService notificationService;
+
+	@Autowired
+	private UserSettingsRepository userSettingsRepository;
+
+	@Autowired
+	private TOTPService totpService;
 
 	@PostConstruct
 	public void init() {
@@ -88,10 +100,34 @@ public class AuthController {
 	@PreAuthorize("hasRole('ADMIN')")
 	@PostMapping("/admin/create")
 	public ResponseEntity<User> createUser(@RequestBody User user) {
-		log.info("creation /api/auth/create route started");
-		user.setActive(true);
-		user.setPassword(passwordEncoder.encode(user.getPassword()));
-		return usersService.createUser(user);
+		try {
+			log.info("POST /api/auth/admin/create - User creation initiated");
+
+			// Validate input
+			if (user.getEmail() == null || user.getPassword() == null) {
+				log.warn("Email or password is missing in the request");
+				return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+			}
+
+			if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+				log.info("User with email {} already exists", user.getEmail());
+				return new ResponseEntity<>(HttpStatus.CONFLICT);
+			}
+
+			// Save user settings
+			UserSettings userSettings = new UserSettings();
+			userSettings.setEmail(user.getEmail());
+			userSettingsRepository.save(userSettings);
+
+			// Prepare and save user
+			user.setActive(true);
+			user.setPassword(passwordEncoder.encode(user.getPassword()));
+
+			return usersService.createUser(user);
+		} catch (Exception e) {
+			log.error("Error creating user: {}", e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
 	}
 
 	@PreAuthorize("hasRole('ADMIN')")
@@ -100,81 +136,96 @@ public class AuthController {
 		return new ResponseEntity<>("Sample Response from Admin", HttpStatus.OK);
 	}
 
-//	@PostMapping("/login")
-//	public ResponseEntity<Map<String, String>> login(HttpServletRequest request,@RequestBody UserNameAndPasswordWithMetaData user) {
-//		UserLoginHistory metadata = new UserLoginHistory();
-//		System.out.println("IP ADDRESS: "+request.getRemoteAddr());
-//		
-//		metadata.setDeviceInfo(user.getMetadata().getDeviceInfo());
-//		metadata.setIpAddress(user.getMetadata().getIpAddress());
-//		metadata.setLocation(user.getMetadata().getLocation());
-//		metadata.setLoginTime(user.getMetadata().getLoginTime());
-//		metadata.setEmail(user.getEmail());
-//		try {
-//			log.info("Login attempt for user: {}", user.getEmail());
-//				
-//			if (user.getEmail() == null || user.getPassword() == null) {
-//				return new ResponseEntity<>(Map.of("error", "Email and Password must not be null"), HttpStatus.BAD_REQUEST);
-//			}
-//			
-//			Authentication authentication = authenticationManager
-//					.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), user.getPassword()));
-//			UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-//            
-//			return userRepository.findByEmail(user.getEmail()).filter(User::isEmailVerified).map(verifiedUser -> {
-//				userRepository.findByEmail(user.getEmail()).ifPresent(u -> {
-//					if(!u.isActive()) {
-//						metadata.setStatus("INACTIVE");
-//						loggingRepository.save(metadata);
-//						throw new RuntimeException("User is inactive. Please contact support.");
-//					}
-//				});
-//				String token = jwtutil.generateToken(userDetails.getUsername(),
-//						userDetails.getAuthorities().toString());
-//				metadata.setStatus("SUCCESS");
-//                userRepository.findByEmail(user.getEmail()).ifPresent(u -> {
-//					u.setLastLogin(metadata.getLoginTime());
-//					userRepository.save(u);
-//					System.out.println("User last login updated: " + u.getLastLogin());
-//				});
-//				return ResponseEntity.ok(Map.of("token", token));
-//			}).orElseGet(() -> {
-//				
-//				Optional<UserOtp> existingOtp = otpRepository.findTopByEmailAndTypeAndUsedOrderByCreatedAtDesc(user.getEmail(), "VERIFICATION", false);
-//
-//				if (existingOtp.isPresent() && !UserOtp.isExpired(existingOtp.get().getCreatedAt(), 60)) {
-//				    return ResponseEntity.status(HttpStatus.CONFLICT)
-//				        .body(Map.of("message", "An OTP has already been sent. Please check your email."));
-//				}
-//				
-//				boolean emailSent = usersService.sendVerificationEmail(user.getEmail(),"VERIFICATION");
-//				if (emailSent) {
-//					metadata.setStatus("UNVERIFIED");
-//					return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(Map.of("response",
-//							"User is not verified. A verification email has been sent to " + user.getEmail()));
-//				} else {
-//					metadata.setStatus("UNVERIFIED_EMAIL_FAILED");
-//					return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-//							.body(Map.of("error", "User is not verified and email sending failed"));
-//				}
-//			});
-//
-//		} catch (Exception e) {
-//			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid username or password"));
-//		}
-//		finally {
-//			
-//			if(metadata.getStatus() == null) {
-//				metadata.setStatus("FAILED");
-//			}
-//			
-//			loggingRepository.save(metadata);
-//			log.info("Login for user: {}", user.getEmail());
-//		}
-//	}
+	@PreAuthorize("hasRole('ADMIN')")
+	@PostMapping("/admin/send-magic-link")
+	public ResponseEntity<Object> sendMagicLink(HttpServletRequest request, @RequestBody MagicLinkPayload user) {
+		String email = user.getEmail();
+		log.info("Sending magic link to email: {}", email);
+
+		// Validate email input
+		if (email == null || email.isBlank()) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Email must not be null or empty"));
+		}
+
+		if (!CommonUtils.isValidEmail(email)) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Invalid email format"));
+		}
+
+		// Create login metadata
+		UserLoginHistory metadata = new UserLoginHistory();
+		metadata.setDeviceInfo(user.getMetadata().getDeviceInfo());
+		metadata.setIpAddress(user.getMetadata().getIpAddress());
+		metadata.setLocation(user.getMetadata().getLocation());
+		metadata.setLoginTime(CommonUtils.getLocalDateTime());
+		metadata.setEmail(user.getEmail());
+		log.info("Login attempt for user: {}", user.getEmail());
+
+		try {
+			// Fetch user from the database
+			Optional<User> optionalUser = userRepository.findByEmail(user.getEmail());
+			if (optionalUser.isEmpty()) {
+				metadata.setStatus("UNVERIFIED");
+				return ResponseEntity.status(HttpStatus.NOT_FOUND)
+						.body(Map.of("error", "User not found with the provided email"));
+			}
+
+			User dbUser = optionalUser.get();
+			metadata.setStatus("SUCCESS");
+
+			// Update user's last login time
+			dbUser.setLastLogin(CommonUtils.getLocalDateTime());
+			userRepository.save(dbUser);
+
+			// Send magic link
+			boolean magicLinkSent = usersService.sendMagicLink(email);
+			if (magicLinkSent) {
+				return ResponseEntity.ok(Map.of("message", "Magic link sent to " + email));
+			} else {
+				return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+						.body(Map.of("error", "Failed to send magic link"));
+			}
+		} catch (Exception e) {
+			log.error("Error sending magic link: {}", e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(Map.of("error", "An error occurred while sending the magic link"));
+		}
+	}
+
+	@PreAuthorize("hasRole('ADMIN')")
+	@PostMapping("/admin/verify-mfa")
+	public ResponseEntity<Map<String, String>> verifyMfa(@RequestBody UserNameAndPasswordWithMetaData user) {
+		log.info("MFA verification attempt for user: {}", user.getEmail());
+
+		if (user.getEmail() == null || user.getOtp() == null) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Email and Password must not be null"));
+		}
+
+		boolean isValid = totpService.verifyCode(user.getEmail(), user.getOtp());
+
+		System.out.println("MFA verification result for user " + user.getEmail() + ": " + isValid);
+		
+		if (isValid) {
+
+			// Authenticate user
+			Authentication authentication = authenticationManager
+					.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), user.getPassword()));
+			UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+
+			// Generate JWT token
+			String token = jwtutil.generateToken(userDetails.getUsername(), userDetails.getAuthorities().toString());
+
+			log.info("MFA verification successful for user: {}", user.getEmail());
+			return ResponseEntity.ok(Map.of("token", token, "message", "MFA verification successful"));
+
+		} else {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or Reused OTP"));
+		}
+
+	}
+
 
 	@PostMapping("/login")
-	public ResponseEntity<Map<String, String>> login(HttpServletRequest request,
+	public ResponseEntity<Map<String, Object>> login(HttpServletRequest request,
 			@RequestBody UserNameAndPasswordWithMetaData user) {
 		UserLoginHistory metadata = new UserLoginHistory();
 		log.info("Login attempt for user: {}", user.getEmail());
@@ -212,7 +263,27 @@ public class AuthController {
 
 			if (!dbUser.isActive()) {
 				metadata.setStatus("INACTIVE");
-				return new ResponseEntity<>(Map.of("error", "User is inactive. Please contact support."), HttpStatus.FORBIDDEN);
+				return new ResponseEntity<>(Map.of("error", "User is inactive. Please contact support."),
+						HttpStatus.FORBIDDEN);
+			}
+
+			// MFA Check
+
+			Optional<UserSettings> userSettingsOptional = userSettingsRepository.findByEmail(user.getEmail());
+
+			if (userSettingsOptional.isEmpty()) {
+				// User settings not found, create default settings
+				UserSettings userSettings = new UserSettings();
+				userSettings.setEmail(user.getEmail());
+				userSettingsRepository.save(userSettings);
+			}
+
+			if (userSettingsOptional.isPresent() && userSettingsOptional.get().isMfaEnabled()) {
+				// MFA is enabled, handle accordingly
+				metadata.setStatus("MFA_REQUIRED");
+				return new ResponseEntity<>(
+						Map.of("response", new LoginMFARequiredModal("Multi-Factor Authentication is required", true)),
+						HttpStatus.PARTIAL_CONTENT);
 			}
 
 			// Successful login
@@ -235,7 +306,7 @@ public class AuthController {
 		}
 	}
 
-	private ResponseEntity<Map<String, String>> handleUnverifiedUser(String email, UserLoginHistory metadata) {
+	private ResponseEntity<Map<String, Object>> handleUnverifiedUser(String email, UserLoginHistory metadata) {
 		Optional<UserOtp> existingOtp = otpRepository.findTopByEmailAndTypeAndUsedOrderByCreatedAtDesc(email,
 				"VERIFICATION", false);
 

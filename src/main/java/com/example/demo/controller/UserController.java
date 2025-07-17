@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,12 +18,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserOptionalData;
+import com.example.demo.entity.UserSettings;
 import com.example.demo.modal.NewAndOldPassword;
 import com.example.demo.modal.RefinedLoginHistories;
 import com.example.demo.modal.RefinedUserModal;
 import com.example.demo.modal.UpdateUserDetailsModal;
 import com.example.demo.repository.UserOptionalDataRepository;
 import com.example.demo.repository.UserRepository;
+import com.example.demo.repository.UserSettingsRepository;
+import com.example.demo.service.TOTPService;
 import com.example.demo.service.UsersService;
 
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +48,12 @@ public class UserController {
 	
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+	
+	@Autowired
+	private TOTPService totpService;
+	
+	@Autowired
+	private UserSettingsRepository userSettingsRepository;
 
 	@GetMapping("/get/all")
 	public ResponseEntity<List<RefinedUserModal>> getAllUser() {
@@ -142,5 +152,41 @@ public class UserController {
 	    log.info("Password changed successfully for user: {}", email);
 	    return ResponseEntity.ok("Password changed successfully");
 	}
+	
+	@PostMapping("/register-mfa")
+	public ResponseEntity<Object> registerMfa(Authentication authentication) {
+		String email = authentication.getName();
 
+		log.info("MFA registration attempt for user: {}", email);
+
+		if (email == null || email.isBlank()) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Email must not be null or empty"));
+		}
+		
+		Optional<UserSettings> userSettingsOpt = userSettingsRepository.findByEmail(email);
+		
+		if (userSettingsOpt.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User settings not found"));
+		}
+		
+		UserSettings userSettings = userSettingsOpt.get();
+		
+		if (userSettings.isMfaEnabled()) {
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "MFA is already enabled"));
+		}
+		
+		Map<String, String> registrationData = totpService.register(email);
+		
+		if (registrationData == null || registrationData.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to register MFA"));
+		}
+		
+		userSettings.setMfaEnabled(true);
+		
+		userSettingsRepository.save(userSettings);
+		
+		log.info("MFA registration successful for user: {}", email);
+		return ResponseEntity.ok(registrationData);
+	}
+	
 }

@@ -23,5 +23,18 @@ public class CommonUtils {
 	public static boolean isValidRole(String role) {
 	    return role != null && ALLOWED_ROLES.contains(role.toUpperCase());
 	}
+
+	public static boolean isValidEmail(String email) {
+		
+		if (email == null || email.isEmpty()) {
+			return false;
+		}
+		String emailRegex = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+		if (email.matches(emailRegex)) {
+			return true;
+		}
+		// If the email does not match the regex, return false
+		return false;
+	}
 	
 }

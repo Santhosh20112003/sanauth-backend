@@ -1,20 +1,29 @@
 package com.example.demo.controller;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserOptionalData;
@@ -38,6 +47,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class UserController {
 
+	private static final String SESSION_HOST = "http://localhost:9001";
+
 	@Autowired
 	private UsersService usersService;
 
@@ -55,9 +66,12 @@ public class UserController {
 
 	@Autowired
 	private UserSettingsRepository userSettingsRepository;
-	
+
 	@Autowired
 	private RedisService redisService;
+
+	@Autowired
+	RestTemplate restTemplate;
 
 	@GetMapping("/get/all")
 	public ResponseEntity<List<RefinedUserModal>> getAllUser() {
@@ -157,6 +171,126 @@ public class UserController {
 		return ResponseEntity.ok("Password changed successfully");
 	}
 
+	@PostMapping("/revoke/{token}")
+	public ResponseEntity<Map<String, String>> revokeAccess(Authentication authentication,@PathVariable String token) {
+		try {
+			log.info("Processing logout request");
+
+			callSessionRevokeApi(token);
+			log.info("Logout processed successfully");
+			return ResponseEntity.ok(Map.of("message", "Revoked successful"));
+
+		} catch (Exception e) {
+			log.error("Error during logout: {}", e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(Map.of("error", "An error occurred during logout"));
+		} finally {
+			log.info("Revoke request completed");
+		}
+	}
+	
+	
+	
+	@PostMapping("/logout")
+	public ResponseEntity<Map<String, String>> logout(Authentication authentication) {
+		try {
+			log.info("Processing logout request");
+			String jwtToken = authentication.getCredentials() instanceof String
+					? authentication.getCredentials().toString()
+					: null;
+
+			if (jwtToken == null || jwtToken.isBlank()) {
+				log.warn("JWT token is null or empty");
+				return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+						.body(Map.of("error", "JWT token is required for logout"));
+			}
+
+			callSessionRevokeApi(jwtToken);
+			log.info("Logout processed successfully");
+			return ResponseEntity.ok(Map.of("message", "Logout successful"));
+
+		} catch (Exception e) {
+			log.error("Error during logout: {}", e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(Map.of("error", "An error occurred during logout"));
+		} finally {
+			log.info("Logout request completed");
+		}
+	}
+
+	public boolean callSessionRevokeApi(String token) throws RestClientException {
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setBearerAuth(token);
+
+		Map<String, Object> requestBody = new HashMap<>();
+
+		HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+
+		log.info("Publishing login event to session service for user: {}");
+		ResponseEntity<?> response = restTemplate.exchange(SESSION_HOST + "/api/session/revoke/" + token,
+				HttpMethod.GET, requestEntity, String.class);
+
+		log.info("Response from session service: {}", response.getStatusCode());
+
+		if (response.getStatusCode() != HttpStatus.OK) {
+			log.error("Failed to publish login event to session service: {}", response.getStatusCode());
+			return false;
+		} else {
+			log.info("Login event published successfully to session service");
+			return true;
+		}
+	}
+	
+	
+	@PostMapping("/get/session/list")
+	private ResponseEntity<List<Map<String, Object>>> getSessionList(Authentication authentication) {
+		log.info("Fetching session list for user: {}", authentication.getName());
+
+		if (authentication == null || !authentication.isAuthenticated()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+		}
+
+		String token = authentication.getCredentials() instanceof String
+				? authentication.getCredentials().toString()
+				: null;
+
+		if (token == null || token.isBlank()) {
+			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Collections.emptyList());
+		}
+
+		try {
+			List<Map<String, Object>> sessionList = callSessionListApi(token);
+			return ResponseEntity.ok(sessionList);
+		} catch (RestClientException e) {
+			log.error("Error fetching session list: {}", e.getMessage());
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Collections.emptyList());
+		}
+	}
+
+	public List<Map<String, Object>> callSessionListApi(String token) throws RestClientException {
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setBearerAuth(token);
+
+		HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+
+		log.info("Calling session service to fetch session list");
+
+		ResponseEntity<List> response = restTemplate.exchange(SESSION_HOST + "/api/session/list/all", HttpMethod.POST,
+				requestEntity, List.class);
+
+		log.info("Response from session service: {}", response.getStatusCode());
+
+		if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+			log.info("Successfully fetched session list");
+			return response.getBody();
+		} else {
+			log.error("Failed to fetch session list. Status: {}", response.getStatusCode());
+			return Collections.emptyList();
+		}
+	}
+
 	@PostMapping("/register-mfa")
 	public ResponseEntity<Object> registerMfa(Authentication authentication) {
 		String email = authentication.getName();
@@ -239,7 +373,7 @@ public class UserController {
 		UserSettings userSettings = userSettingsOpt.get();
 		return ResponseEntity.ok(userSettings);
 	}
-	
+
 	@GetMapping("/remove/mfa")
 	public ResponseEntity<String> removeMfa(Authentication authentication) {
 		String email = authentication.getName();
@@ -264,9 +398,9 @@ public class UserController {
 
 		userSettings.setMfaEnabled(false);
 		userSettingsRepository.save(userSettings);
-		
+
 		totpService.removeSecret(email);
-		
+
 		log.info("MFA removed successfully for user: {}", email);
 		return ResponseEntity.ok("MFA removed successfully");
 	}

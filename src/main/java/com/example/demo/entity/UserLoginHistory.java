@@ -1,8 +1,9 @@
 package com.example.demo.entity;
 
-
 import java.time.Instant;
 import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,25 +25,25 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UserLoginHistory {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    private String email; 
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
-    @Column(name = "login_time", nullable = false)
-    private LocalDateTime loginTime;
+	private String email;
 
-    @Column(name = "device_info", length = 255)
-    private String deviceInfo;
+	@Column(name = "login_time", nullable = false)
+	private LocalDateTime loginTime;
 
-    @Column(name = "ip_address", length = 50)
-    private String ipAddress;
+	@Column(name = "device_info", length = 255)
+	private String deviceInfo;
 
-    @Column(name = "location", length = 255)
-    private String location;
+	@Column(name = "ip_address", length = 50)
+	private String ipAddress;
 
-    @Column(name = "status", length = 50)
-    private String status;
-    
+	@Column(name = "location", length = 255)
+	private String location;
+
+	@Column(name = "status", length = 50)
+	private String status;
+
 }

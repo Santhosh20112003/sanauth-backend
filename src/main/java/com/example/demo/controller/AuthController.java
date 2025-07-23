@@ -1,11 +1,14 @@
 package com.example.demo.controller;
 
-import java.time.LocalDate;
-import java.util.List;
+import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,14 +19,14 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 
 import com.example.demo.config.JwtUtil;
-import com.example.demo.config.SecurityConfig;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserLoginHistory;
 import com.example.demo.entity.UserOptionalData;
@@ -34,11 +37,8 @@ import com.example.demo.modal.EmailOtpAndPassword;
 import com.example.demo.modal.LoginMFARequiredModal;
 import com.example.demo.modal.MagicLinkPayload;
 import com.example.demo.modal.MailModal;
-import com.example.demo.modal.RefinedUserModal;
 import com.example.demo.modal.UserFullDetailsModal;
 import com.example.demo.modal.UserNameAndPasswordWithMetaData;
-import com.example.demo.modal.UserNamePassword;
-import com.example.demo.modal.WebSocketPayload;
 import com.example.demo.repository.LoggingRepository;
 import com.example.demo.repository.OtpRepository;
 import com.example.demo.repository.UserOptionalDataRepository;
@@ -58,6 +58,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/auth")
 @Slf4j
 public class AuthController {
+
+	private static final String SESSION_HOST = "http://localhost:9001";
 
 	@Autowired
 	private UsersService usersService;
@@ -91,6 +93,9 @@ public class AuthController {
 
 	@Autowired
 	private TOTPService totpService;
+
+	@Autowired
+	RestTemplate restTemplate;
 
 	@PostConstruct
 	public void init() {
@@ -190,43 +195,74 @@ public class AuthController {
 					.body(Map.of("error", "An error occurred while sending the magic link"));
 		}
 	}
+	
+	
 
 	@PreAuthorize("hasRole('ADMIN')")
 	@PostMapping("/admin/verify-mfa")
 	public ResponseEntity<Map<String, String>> verifyMfa(@RequestBody UserNameAndPasswordWithMetaData user) {
-		log.info("MFA verification attempt for user: {}", user.getEmail());
+		UserLoginHistory metadata = new UserLoginHistory();
+		try {
+			log.info("MFA verification attempt for user: {}", user.getEmail());
 
-		if (user.getEmail() == null || user.getOtp() == null) {
-			return ResponseEntity.badRequest().body(Map.of("error", "Email and Password must not be null"));
-		}
+			log.info("Login attempt for user: {}", user.getEmail());
 
-		boolean isValid = totpService.verifyCode(user.getEmail(), user.getOtp());
+			metadata.setDeviceInfo(user.getMetadata().getDeviceInfo());
+			metadata.setIpAddress(user.getMetadata().getIpAddress());
+			metadata.setLocation(user.getMetadata().getLocation());
+			metadata.setLoginTime(CommonUtils.getLocalDateTime());
+			metadata.setEmail(user.getEmail());
 
-		System.out.println("MFA verification result for user " + user.getEmail() + ": " + isValid);
-		
-		if (isValid) {
+			if (user.getEmail() == null || user.getOtp() == null) {
+				metadata.setStatus("FAILED");
+				return ResponseEntity.badRequest().body(Map.of("error", "Email and Password must not be null"));
+			}
 
-			// Authenticate user
-			Authentication authentication = authenticationManager
-					.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), user.getPassword()));
-			UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+			boolean isValid = totpService.verifyCode(user.getEmail(), user.getOtp());
 
-			// Generate JWT token
-			String token = jwtutil.generateToken(userDetails.getUsername(), userDetails.getAuthorities().toString());
+			System.out.println("MFA verification result for user " + user.getEmail() + ": " + isValid);
 
-			log.info("MFA verification successful for user: {}", user.getEmail());
-			return ResponseEntity.ok(Map.of("token", token, "message", "MFA verification successful"));
+			if (isValid) {
 
-		} else {
-			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or Reused OTP"));
+				// Authenticate user
+				Authentication authentication = authenticationManager
+						.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), user.getPassword()));
+				UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+
+				// Generate JWT token
+				String token = jwtutil.generateToken(userDetails.getUsername(),
+						userDetails.getAuthorities().toString());
+
+				if (callSessionPublishApi(token,
+						metadata.getLoginTime().atZone(ZoneId.systemDefault()).toInstant().toString(),
+						metadata.getDeviceInfo(), metadata.getIpAddress(), metadata.getLocation())) {
+					metadata.setStatus("SUCCESS");
+				} else {
+					metadata.setStatus("SESSION_PUBLISH_FAILED");
+				}
+
+				log.info("MFA verification successful for user: {}", user.getEmail());
+				return ResponseEntity.ok(Map.of("token", token, "message", "MFA verification successful"));
+
+			} else {
+				return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or Reused OTP"));
+			}
+		} catch (Exception e) {
+			log.error("Error during MFA verification: {}", e.getMessage());
+			metadata.setStatus("FAILED");
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(Map.of("error", "An error occurred during MFA verification"));
+		} finally {
+			loggingRepository.save(metadata);
+			log.info("MFA verification processed for user: {}", user.getEmail());
 		}
 
 	}
 
-
 	@PostMapping("/login")
 	public ResponseEntity<Map<String, Object>> login(HttpServletRequest request,
 			@RequestBody UserNameAndPasswordWithMetaData user) {
+
 		UserLoginHistory metadata = new UserLoginHistory();
 		log.info("Login attempt for user: {}", user.getEmail());
 
@@ -288,14 +324,26 @@ public class AuthController {
 
 			// Successful login
 			String token = jwtutil.generateToken(userDetails.getUsername(), userDetails.getAuthorities().toString());
-			metadata.setStatus("SUCCESS");
 
 			dbUser.setLastLogin(CommonUtils.getLocalDateTime());
 			userRepository.save(dbUser);
 
-			log.info("User last login updated: {}", dbUser.getLastLogin());
+			if (callSessionPublishApi(token,
+					metadata.getLoginTime().atZone(ZoneId.systemDefault()).toInstant().toString(),
+					metadata.getDeviceInfo(), metadata.getIpAddress(), metadata.getLocation())) {
+				metadata.setStatus("SUCCESS");
+			} else {
+				metadata.setStatus("SESSION_PUBLISH_FAILED");
+			}
 
 			return ResponseEntity.ok(Map.of("token", token));
+
+		} catch (RestClientException e) {
+			log.error("Error communicating with session service", e);
+			metadata.setStatus("SESSION_PUBLISH_FAILED");
+			log.debug("RestClientException details: {}", e.getMessage());
+			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+					.body(Map.of("error", "Session service unavailable"));
 
 		} catch (Exception e) {
 			metadata.setStatus("FAILED");
@@ -303,6 +351,60 @@ public class AuthController {
 		} finally {
 			loggingRepository.save(metadata);
 			log.info("Login processed for user: {}", user.getEmail());
+		}
+	}
+
+	public boolean callSessionPublishApi(String token, String logintime, String deviceInfo, String ipAdress,
+			String location) throws RestClientException {
+		HttpHeaders headers = new HttpHeaders();
+		headers.set("Content-Type", "application/json");
+		headers.set("Authorization", "Bearer " + token);
+
+		Map<String, Object> requestBody = new HashMap<>();
+		requestBody.put("loginTime", logintime);
+		requestBody.put("deviceInfo", deviceInfo);
+		requestBody.put("ipAddress", ipAdress);
+		requestBody.put("location", location);
+
+		HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+
+		log.info("Publishing login event to session service for user: {}");
+		ResponseEntity<?> response = restTemplate.exchange(SESSION_HOST + "/api/session/publish", HttpMethod.POST,
+				requestEntity, String.class);
+
+		log.info("Response from session service: {}", response.getStatusCode());
+
+		if (response.getStatusCode() != HttpStatus.OK) {
+			log.error("Failed to publish login event to session service: {}", response.getStatusCode());
+			return false;
+		} else {
+			log.info("Login event published successfully to session service");
+			return true;
+		}
+	}
+	
+	
+	public boolean callSessionRevokeApi(String token) throws RestClientException {
+		HttpHeaders headers = new HttpHeaders();
+		headers.set("Content-Type", "application/json");
+		headers.set("Authorization", "Bearer " + token);
+
+		Map<String, Object> requestBody = new HashMap<>();
+
+		HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+
+		log.info("Publishing login event to session service for user: {}");
+		ResponseEntity<?> response = restTemplate.exchange(SESSION_HOST + "/api/revoke/"+token, HttpMethod.GET,
+				requestEntity, String.class);
+
+		log.info("Response from session service: {}", response.getStatusCode());
+
+		if (response.getStatusCode() != HttpStatus.OK) {
+			log.error("Failed to publish login event to session service: {}", response.getStatusCode());
+			return false;
+		} else {
+			log.info("Login event published successfully to session service");
+			return true;
 		}
 	}
 
@@ -538,6 +640,11 @@ public class AuthController {
 		});
 //		notificationService.sendToClients(new WebSocketPayload(email,"","","User details fetched for: " + email),email);
 		return ResponseEntity.ok(userDetails);
+	}
+
+	@GetMapping("/test")
+	public ResponseEntity<Object> Sample() {
+		return restTemplate.getForEntity("https://api.restful-api.dev/objects", Object.class);
 	}
 
 }
